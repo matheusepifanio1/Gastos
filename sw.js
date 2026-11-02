@@ -1,5 +1,5 @@
 // Service worker: permite abrir o app offline depois da primeira visita.
-const CACHE = 'gastos-v1';
+const CACHE = 'gastos-v2';
 const ASSETS = [
   './', 'index.html', 'styles.css', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png',
   'js/app.js', 'js/parsers.js', 'js/categorize.js', 'js/analysis.js', 'js/storage.js', 'js/demo.js',

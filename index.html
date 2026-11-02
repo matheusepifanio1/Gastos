@@ -22,9 +22,15 @@
       <span id="monthLabel"></span>
       <button id="nextMonth" aria-label="Próximo mês">›</button>
     </div>
+    <div class="scope" id="scopeBar" hidden role="tablist" aria-label="O que analisar">
+      <button data-scope="tudo">Tudo</button>
+      <button data-scope="cartao">💳 Cartão</button>
+      <button data-scope="conta">💸 Pix e conta</button>
+    </div>
   </header>
 
   <main>
+    <div id="scopeEmpty" class="card muted" hidden></div>
     <!-- Estado vazio -->
     <section id="empty" class="view" hidden>
       <div class="card hero">
@@ -45,7 +51,7 @@
     <!-- Resumo -->
     <section id="view-resumo" class="view" hidden>
       <div class="card total-card">
-        <div class="muted">Total gasto no mês</div>
+        <div class="muted" id="totalLabel">Total gasto no mês</div>
         <div class="big" id="totalMonth">R$ 0,00</div>
         <div id="totalDelta" class="delta"></div>
         <div id="goalBar" class="goal" hidden><div class="goal-fill"></div><span class="goal-text"></span></div>
@@ -70,6 +76,7 @@
 
       <div class="card">
         <h3>Ritmo do mês <small class="muted">acumulado dia a dia</small></h3>
+        <div id="paceText" class="pace"></div>
         <div class="chart-box"><canvas id="chartCumulative"></canvas></div>
       </div>
 
@@ -80,7 +87,7 @@
       </div>
 
       <div class="card">
-        <h3>Onde você mais gastou</h3>
+        <h3 id="topTitle">Onde você mais gastou</h3>
         <ol class="rank" id="topMerchants"></ol>
       </div>
     </section>
@@ -132,7 +139,8 @@
         <div id="importLog" class="log"></div>
       </div>
       <div class="card">
-        <h3>Meta de gastos mensal</h3>
+        <h3>Meta de gastos mensal <small class="muted">(<span id="goalScope">Tudo</span>)</small></h3>
+        <p class="muted">A meta vale para a visão escolhida no topo (Tudo, Cartão ou Pix e conta). Troque a visão para definir outra meta.</p>
         <div class="filter-row">
           <input type="number" id="goalInput" inputmode="decimal" placeholder="Ex: 3000" min="0" step="50">
           <button class="btn" id="saveGoal">Salvar</button>
@@ -173,7 +181,14 @@
         <select id="dlgCategory"></select>
       </label>
       <label class="check"><input type="checkbox" id="dlgAll" checked> <span>Aplicar a todas de “<span id="dlgMerchant"></span>”</span></label>
-      <label class="check"><input type="checkbox" id="dlgIgnore"> <span>Ignorar esta transação (ex: transferência para mim mesmo)</span></label>
+      <label>Contar nos gastos?
+        <select id="dlgIgnore">
+          <option value="count">Sim, é um gasto</option>
+          <option value="one">Não, ignorar só esta</option>
+          <option value="all">Não, ignorar todas deste destinatário/estabelecimento</option>
+        </select>
+      </label>
+      <div class="muted" id="dlgReason"></div>
       <div class="btn-row">
         <button class="btn" value="cancel">Cancelar</button>
         <button class="btn primary" value="save" id="dlgSave">Salvar</button>

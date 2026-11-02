@@ -70,6 +70,55 @@ export function cumulativeByDay(txs, month) {
   return perDay.map((v) => (acc += v));
 }
 
+// Escopos de análise: cartão separado de Pix/conta
+export const SCOPES = {
+  tudo: { label: 'Tudo', sources: null },
+  cartao: { label: 'Cartão', sources: ['cartao'] },
+  conta: { label: 'Pix e conta', sources: ['pix', 'debito', 'boleto', 'outros'] },
+};
+
+export function filterScope(txs, scope) {
+  const src = SCOPES[scope]?.sources;
+  if (!src) return txs;
+  // fora do "Tudo" as entradas não entram (não faz sentido comparar salário só com o cartão)
+  return txs.filter((t) => src.includes(t.source) && t.kind !== 'income');
+}
+
+// Meses anteriores com dados (até n), do mais recente para o mais antigo
+export function previousMonths(txs, month, n = 6) {
+  return months(expenses(txs)).filter((m) => m < month).reverse().slice(0, n);
+}
+
+// Média do gasto acumulado dia a dia dos meses anteriores (dias que o mês não tem repetem o total)
+export function cumulativeAverage(txs, month, n = 6) {
+  const prev = previousMonths(txs, month, n);
+  const len = daysInMonth(month);
+  if (!prev.length) return { months: prev, values: [] };
+  const values = new Array(len).fill(0);
+  for (const m of prev) {
+    const c = cumulativeByDay(txs, m);
+    for (let i = 0; i < len; i++) values[i] += c[Math.min(i, c.length - 1)] / prev.length;
+  }
+  return { months: prev, values };
+}
+
+// Comparação no mesmo ponto do mês: "até o dia X você gastou A; na média, até o dia X era B"
+export function paceComparison(txs, month, today = new Date().toISOString().slice(0, 10), n = 6) {
+  const len = daysInMonth(month);
+  const day = month === monthOf(today) ? +today.slice(8, 10) : len;
+  const cur = cumulativeByDay(txs, month)[day - 1] || 0;
+  const avg = cumulativeAverage(txs, month, n);
+  if (!avg.months.length) return null;
+  const prevMonth = avg.months[0];
+  const prevCum = cumulativeByDay(txs, prevMonth);
+  return {
+    day, partial: day < len, current: cur,
+    average: avg.values[day - 1], averageMonths: avg.months.length,
+    previous: prevCum[Math.min(day, prevCum.length) - 1], previousMonth: prevMonth,
+    averageFull: avg.values[len - 1],
+  };
+}
+
 export function dailyTotals(txs, month) {
   const list = expenses(inMonth(txs, month));
   const n = daysInMonth(month);
@@ -190,6 +239,17 @@ export function insights(txs, month, { today = new Date().toISOString().slice(0,
     });
   }
 
+  // Mesmo ponto do mês x meses anteriores
+  const pace = isCurrent ? paceComparison(txs, month, today) : null;
+  if (pace && pace.average > 0) {
+    const d = pace.current - pace.average;
+    out.push({
+      icon: d > 0 ? '🏃' : '🐢', tone: d > pace.average * 0.1 ? 'bad' : d < 0 ? 'good' : 'neutral',
+      title: `Até o dia ${pace.day}: ${brl(pace.current)}`,
+      text: `Na média dos últimos ${pace.averageMonths} meses, até o dia ${pace.day} você tinha gasto ${brl(pace.average)}, ou seja, ${brl(Math.abs(d))} ${d > 0 ? 'a mais' : 'a menos'} agora. Em ${monthName(pace.previousMonth)}, nesse ponto, eram ${brl(pace.previous)}.`,
+    });
+  }
+
   // Comparação com meses anteriores
   if (prev && !isCurrent) {
     const diff = cur.total - prev.total;
@@ -287,7 +347,7 @@ export function insights(txs, month, { today = new Date().toISOString().slice(0,
 
   // Cartão x Pix
   const card = cur.bySource.find((g) => g.key === 'cartao');
-  if (card && card.total > 0 && cur.total > 0) {
+  if (card && card.total > 0 && cur.total > 0 && cur.bySource.length > 1) {
     out.push({ icon: '💳', tone: 'neutral', title: `${pct(card.total / cur.total)} no cartão de crédito`, text: `Cartão: ${brl(card.total)}. Pix, débito e boletos: ${brl(cur.total - card.total)}.` });
   }
 

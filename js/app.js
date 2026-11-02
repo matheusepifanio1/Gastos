@@ -11,7 +11,8 @@ const SOURCE_LABEL = { cartao: 'Cartão', pix: 'Pix', debito: 'Débito', boleto:
 const SOURCE_COLOR = { cartao: '#820ad1', pix: '#12b886', debito: '#1971c2', boleto: '#f08c00', outros: '#868e96' };
 
 let state = store.load();
-let txs = [];
+let allTxs = []; // todas as transações categorizadas
+let txs = []; // só as do escopo escolhido (Tudo / Cartão / Pix e conta)
 let month = null;
 let view = 'resumo';
 const charts = {};
@@ -19,7 +20,8 @@ const charts = {};
 // ---------- estado ----------
 
 function recompute() {
-  txs = applyCategories(state.transactions, state.overrides);
+  allTxs = applyCategories(state.transactions, state.overrides);
+  txs = A.filterScope(allTxs, scope());
   const ms = A.months(A.expenses(txs));
   if (!ms.includes(month)) {
     month = ms[ms.length - 1] || null;
@@ -28,6 +30,9 @@ function recompute() {
     if (month === today.slice(0, 7) && +today.slice(8, 10) < 7 && ms.length > 1) month = ms[ms.length - 2];
   }
 }
+
+const scope = () => (A.SCOPES[state.settings.scope] ? state.settings.scope : 'tudo');
+const goal = () => +(state.settings.goals?.[scope()] ?? (scope() === 'tudo' ? state.settings.goal : 0)) || 0;
 
 function persist() {
   if (!store.save(state)) toast('Não foi possível salvar (armazenamento cheio?)');
@@ -46,9 +51,24 @@ function toast(msg) {
 function render() {
   recompute();
   const hasData = !!month;
+  if (!hasData && state.transactions.length && scope() !== 'tudo') {
+    // escopo sem dados (ex: só importou o extrato e escolheu "Cartão")
+    $('#empty').hidden = true;
+    $('#tabbar').hidden = false;
+    $('#scopeBar').hidden = false;
+    $('#monthPicker').hidden = true;
+    $$('#scopeBar button').forEach((b) => b.classList.toggle('active', b.dataset.scope === scope()));
+    $$('.view').forEach((v) => { if (v.id.startsWith('view-')) v.hidden = v.id !== 'view-dados' || view !== 'dados'; });
+    $('#scopeEmpty').hidden = view === 'dados';
+    $('#scopeEmpty').textContent = `Nenhum gasto em "${A.SCOPES[scope()].label}". Importe ${scope() === 'cartao' ? 'a fatura do cartão (CSV)' : 'o extrato da conta (CSV ou OFX)'} na aba Dados.`;
+    return;
+  }
+  $('#scopeEmpty').hidden = true;
   $('#empty').hidden = hasData;
   $('#tabbar').hidden = !hasData;
   $('#monthPicker').hidden = !hasData || view === 'dados';
+  $('#scopeBar').hidden = !state.transactions.length;
+  $$('#scopeBar button').forEach((b) => b.classList.toggle('active', b.dataset.scope === scope()));
   $$('.view').forEach((v) => { if (v.id.startsWith('view-')) v.hidden = !hasData || v.id !== `view-${view}`; });
   $$('.tabbar button').forEach((b) => b.classList.toggle('active', b.dataset.view === view));
   if (!hasData) return;
@@ -61,7 +81,10 @@ function render() {
   if (view === 'resumo') renderResumo();
   if (view === 'insights') renderInsights();
   if (view === 'transacoes') renderTransactions();
-  if (view === 'dados') $('#goalInput').value = state.settings.goal || '';
+  if (view === 'dados') {
+    $('#goalInput').value = goal() || '';
+    $('#goalScope').textContent = A.SCOPES[scope()].label;
+  }
 }
 
 function chartColors() {
@@ -88,6 +111,8 @@ function renderResumo() {
   const prevMonth = A.shiftMonth(month, -1);
   const prev = A.summarize(txs, prevMonth);
   $('#totalMonth').textContent = A.brl(s.total);
+  $('#totalLabel').textContent = { tudo: 'Total gasto no mês', cartao: 'Gasto no cartão no mês', conta: 'Gasto com Pix, débito e boletos no mês' }[scope()];
+  $('#topTitle').textContent = scope() === 'conta' ? 'Para quem foi o dinheiro' : 'Onde você mais gastou';
   const delta = $('#totalDelta');
   if (prev.list.length) {
     const d = s.total - prev.total;
@@ -96,15 +121,15 @@ function renderResumo() {
     delta.textContent = `${d > 0 ? '▲' : '▼'} ${A.brl(Math.abs(d))} (${d > 0 ? '+' : ''}${p}%) vs ${A.monthName(prevMonth)}`;
   } else delta.textContent = '';
 
-  const goal = +state.settings.goal || 0;
+  const goalV = goal();
   const goalBar = $('#goalBar');
-  goalBar.hidden = !goal;
-  if (goal) {
-    const r = s.total / goal;
+  goalBar.hidden = !goalV;
+  if (goalV) {
+    const r = s.total / goalV;
     const fill = goalBar.querySelector('.goal-fill');
     fill.style.width = `${Math.min(100, r * 100)}%`;
     fill.className = `goal-fill ${r > 1 ? 'over' : r > 0.85 ? 'warn' : ''}`;
-    goalBar.querySelector('.goal-text').textContent = `${Math.round(r * 100)}% da meta de ${A.brl(goal)}`;
+    goalBar.querySelector('.goal-text').textContent = `${Math.round(r * 100)}% da meta de ${A.brl(goalV)}`;
   }
 
   $('#sourceChips').innerHTML = s.bySource.filter((g) => g.total > 0)
@@ -115,14 +140,19 @@ function renderResumo() {
   // Evolução mensal empilhada por origem
   const series = A.monthlySeries(txs, 12);
   const sources = Object.keys(SOURCE_LABEL).filter((k) => series.some((m) => m.bySource[k]));
+  const closed = series.filter((m) => m.month < new Date().toISOString().slice(0, 7));
+  const monthlyAvg = closed.length ? A.sum(closed, (m) => m.total) / closed.length : 0;
   makeChart('chartMonthly', {
     type: 'bar',
     data: {
       labels: series.map((m) => A.monthName(m.month).slice(0, 3)),
       datasets: sources.map((k) => ({
         label: SOURCE_LABEL[k], data: series.map((m) => m.bySource[k] || 0), backgroundColor: SOURCE_COLOR[k],
-        borderRadius: 4, borderSkipped: false, borderWidth: { top: 2 }, borderColor: 'transparent',
-      })),
+        borderRadius: 4, borderSkipped: false, borderWidth: { top: 2 }, borderColor: 'transparent', order: 2,
+      })).concat(closed.length > 1 ? [{
+        type: 'line', label: 'Média', data: series.map(() => monthlyAvg), borderColor: '#e8590c', borderDash: [6, 4],
+        borderWidth: 2, pointRadius: 0, order: 1,
+      }] : []),
     },
     options: {
       scales: { x: { stacked: true, grid: { display: false } }, y: { stacked: true, ticks: { callback: shortBRL } } },
@@ -150,17 +180,28 @@ function renderResumo() {
     </li>`;
   }).join('');
 
-  // Acumulado: mês atual x anterior x média
+  // Acumulado: mês atual x anterior x média dos meses anteriores (mesmo escopo)
   const days = Array.from({ length: A.daysInMonth(month) }, (_, i) => i + 1);
   const today = new Date().toISOString().slice(0, 10);
   let cur = A.cumulativeByDay(txs, month);
   if (month === today.slice(0, 7)) cur = cur.slice(0, +today.slice(8, 10));
-  const datasets = [{ label: A.monthName(month), data: cur, borderColor: chartColors().brand, backgroundColor: chartColors().brand, borderWidth: 2.5, pointRadius: 0, tension: 0.25 }];
-  if (prev.list.length) datasets.push({ label: A.monthName(prevMonth), data: A.cumulativeByDay(txs, prevMonth), borderColor: '#adb5bd', borderDash: [5, 4], borderWidth: 2, pointRadius: 0, tension: 0.25 });
+  const avg = A.cumulativeAverage(txs, month, 6);
+  const datasets = [{ label: A.monthName(month), data: cur, borderColor: chartColors().brand, backgroundColor: chartColors().brand, borderWidth: 3, pointRadius: 0, tension: 0.25 }];
+  if (prev.list.length) datasets.push({ label: A.monthName(prevMonth), data: A.cumulativeByDay(txs, prevMonth), borderColor: '#adb5bd', backgroundColor: '#adb5bd', borderWidth: 2, pointRadius: 0, tension: 0.25 });
+  if (avg.months.length > 1) datasets.push({ label: `média ${avg.months.length} meses`, data: avg.values, borderColor: '#e8590c', backgroundColor: '#e8590c', borderDash: [6, 4], borderWidth: 2, pointRadius: 0, tension: 0.25 });
   makeChart('chartCumulative', {
     type: 'line', data: { labels: days, datasets },
-    options: { interaction: { mode: 'index', intersect: false }, scales: { x: { grid: { display: false }, ticks: { maxTicksLimit: 8 } }, y: { ticks: { callback: shortBRL } } }, plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, usePointStyle: true } }, tooltip: { ...moneyTooltip, callbacks: { ...moneyTooltip.callbacks, title: (i) => `Dia ${i[0].label}` } } } },
+    options: { interaction: { mode: 'index', intersect: false }, scales: { x: { grid: { display: false }, ticks: { maxTicksLimit: 8 } }, y: { ticks: { callback: shortBRL } } }, plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, usePointStyle: true } }, tooltip: { ...moneyTooltip, callbacks: { ...moneyTooltip.callbacks, title: (i) => `Até o dia ${i[0].label}` } } } },
   });
+  const pace = A.paceComparison(txs, month, today, 6);
+  if (pace && pace.average > 0) {
+    const d = pace.current - pace.average;
+    const pct = Math.round((Math.abs(d) / pace.average) * 100);
+    $('#paceText').innerHTML = `${pace.partial ? `Até o dia ${pace.day}` : 'No mês'}: <b>${A.brl(pace.current)}</b>. ` +
+      `Média dos últimos ${pace.averageMonths} meses${pace.partial ? ' no mesmo ponto' : ''}: ${A.brl(pace.average)} ` +
+      `(<b class="${d > 0 ? 'up' : 'down'}">${d > 0 ? '+' : '−'}${A.brl(Math.abs(d))}, ${d > 0 ? '+' : '−'}${pct}%</b>)` +
+      (pace.partial ? `. Meses anteriores terminaram, em média, em ${A.brl(pace.averageFull)}.` : '.');
+  } else $('#paceText').textContent = '';
 
   // Gastos por dia e por dia da semana
   const daily = A.dailyTotals(txs, month);
@@ -181,7 +222,7 @@ function renderResumo() {
 }
 
 function renderInsights() {
-  const list = A.insights(txs, month, { goal: +state.settings.goal || 0 });
+  const list = A.insights(txs, month, { goal: goal() });
   $('#insightList').innerHTML = list.length
     ? list.map((i) => `<div class="card insight ${i.tone}"><div class="ico">${i.icon}</div><div><h4>${esc(i.title)}</h4><p>${esc(i.text)}</p></div></div>`).join('')
     : '<div class="card muted">Sem dados suficientes neste mês.</div>';
@@ -231,7 +272,7 @@ function renderTransactions() {
     <div class="day-group"><h5><span>${fmtDay(d)}</span><span>${A.brl(A.sum(items.filter((t) => t.kind === 'expense'), (t) => t.amount))}</span></h5>
     ${items.map((t) => {
       const c = CATEGORIES[t.category] || CATEGORIES.Outros;
-      const label = t.kind === 'income' ? 'Entrada' : t.kind === 'ignore' ? 'Ignorada' : t.category;
+      const label = t.kind === 'income' ? 'Entrada' : t.kind === 'ignore' ? `Não conta: ${t.ignoreReason || 'ignorada'}` : t.category;
       return `<div class="tx ${t.kind !== 'expense' ? 'ignored' : ''}" data-id="${t.id}">
         <div class="ico" style="background:${c.color}22">${t.kind === 'income' ? '⬇️' : c.icon}</div>
         <div class="info"><div class="name">${esc(t.merchant || t.description)}</div>
@@ -245,7 +286,7 @@ function renderTransactions() {
 
 let editing = null;
 function openTx(id) {
-  const t = txs.find((x) => x.id === id);
+  const t = allTxs.find((x) => x.id === id);
   if (!t) return;
   editing = t;
   $('#dlgTitle').textContent = t.merchant || t.description;
@@ -254,7 +295,10 @@ function openTx(id) {
   $('#dlgCategory').value = t.category;
   $('#dlgMerchant').textContent = t.merchant;
   $('#dlgAll').checked = true;
-  $('#dlgIgnore').checked = t.kind === 'ignore';
+  const o = state.overrides;
+  $('#dlgIgnore').value = o.ignoredMerchants?.[t.merchantKey] ? 'all' : t.kind === 'ignore' ? 'one' : 'count';
+  $('#dlgIgnore').disabled = t.kind === 'income';
+  $('#dlgReason').textContent = t.kind === 'income' ? 'Entrada de dinheiro: não conta como gasto.' : t.ignoreReason ? `Ignorada automaticamente: ${t.ignoreReason}` : '';
   $('#txDialog').showModal();
 }
 
@@ -266,10 +310,19 @@ $('#txDialog').addEventListener('close', () => {
   if ($('#dlgAll').checked) {
     o.byMerchant[merchantKey(t.merchant)] = cat;
     // remove overrides individuais conflitantes do mesmo estabelecimento
-    for (const x of txs) if (x.merchantKey === t.merchantKey) delete o.byId[x.id];
+    for (const x of allTxs) if (x.merchantKey === t.merchantKey) delete o.byId[x.id];
   } else o.byId[t.id] = cat;
-  if ($('#dlgIgnore').checked && t.kind !== 'ignore') o.ignored[t.id] = true;
-  if (!$('#dlgIgnore').checked) delete o.ignored[t.id];
+  if (t.kind !== 'income') {
+    o.ignoredMerchants = o.ignoredMerchants || {};
+    const choice = $('#dlgIgnore').value;
+    delete o.ignored[t.id];
+    if (choice === 'all') o.ignoredMerchants[t.merchantKey] = true;
+    else {
+      delete o.ignoredMerchants[t.merchantKey];
+      if (choice === 'one') o.ignored[t.id] = true;
+      else if (t.ignoreReason && t.ignoreReason !== 'Ignorada por você') o.ignored[t.id] = false; // forçar contar
+    }
+  }
   persist();
   render();
 });
@@ -330,6 +383,12 @@ function init() {
     render();
   }));
   $$('.tabbar button').forEach((b) => b.addEventListener('click', () => { view = b.dataset.view; render(); window.scrollTo(0, 0); }));
+  $$('#scopeBar button').forEach((b) => b.addEventListener('click', () => {
+    state.settings.scope = b.dataset.scope;
+    persist();
+    month = null;
+    render();
+  }));
   $('#prevMonth').addEventListener('click', () => { month = A.shiftMonth(month, -1); render(); });
   $('#nextMonth').addEventListener('click', () => { month = A.shiftMonth(month, 1); render(); });
   ['#search', '#filterSource', '#filterCategory', '#showAllMonths', '#showIgnored'].forEach((s) => $(s).addEventListener('input', renderTransactions));
@@ -343,9 +402,10 @@ function init() {
   });
 
   $('#saveGoal').addEventListener('click', () => {
-    state.settings.goal = Math.max(0, parseFloat($('#goalInput').value) || 0);
+    const v = Math.max(0, parseFloat($('#goalInput').value) || 0);
+    state.settings.goals = { ...(state.settings.goals || { tudo: +state.settings.goal || 0 }), [scope()]: v };
     persist();
-    toast(state.settings.goal ? `Meta de ${A.brl(state.settings.goal)} salva` : 'Meta removida');
+    toast(v ? `Meta de ${A.brl(v)} (${A.SCOPES[scope()].label}) salva` : 'Meta removida');
   });
   $('#exportBackup').addEventListener('click', () => {
     const blob = new Blob([JSON.stringify(state)], { type: 'application/json' });

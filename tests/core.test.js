@@ -111,3 +111,46 @@ test('análise com dados de demonstração', () => {
   assert.equal(cum.length, 31);
   assert.ok(Math.abs(cum[30] - oct.total) < 0.01);
 });
+
+test('pagamento de fatura e caixinha não contam como gasto (mesmo já importados)', () => {
+  const base = { installment: null, nativeCategory: '', kind: 'expense' };
+  const raw = [
+    { ...base, id: 'a', date: '2026-10-10', description: 'Pagamento de fatura', merchant: 'Pagamento De Fatura', amount: 2150, source: 'outros' },
+    { ...base, id: 'b', date: '2026-10-10', description: 'Transferência enviada pelo Pix - NU PAGAMENTOS S.A. - 18.236.120/0001-58', merchant: 'Nu Pagamentos S.A.', amount: 900, source: 'pix' },
+    { ...base, id: 'c', date: '2026-10-12', description: 'Pagamento de boleto efetuado - CARTAO XYZ', merchant: 'Cartao Xyz', amount: 1234.56, source: 'boleto' },
+    { ...base, id: 'd', date: '2026-10-11', description: 'Pagamento recebido', merchant: 'Pagamento Recebido', amount: -1234.56, source: 'cartao' },
+    { ...base, id: 'e', date: '2026-10-15', description: 'Aplicação RDB', merchant: 'Aplicação Rdb', amount: 300, source: 'outros' },
+    { ...base, id: 'f', date: '2026-10-15', description: 'Transferência enviada pelo Pix - MARIA', merchant: 'Maria', amount: 50, source: 'pix' },
+  ];
+  const t = Object.fromEntries(applyCategories(raw).map((x) => [x.id, x]));
+  assert.equal(t.a.kind, 'ignore');
+  assert.equal(t.b.kind, 'ignore');
+  assert.equal(t.c.kind, 'ignore', 'boleto com mesmo valor do pagamento recebido na fatura');
+  assert.equal(t.d.kind, 'ignore');
+  assert.equal(t.e.kind, 'ignore');
+  assert.equal(t.f.kind, 'expense');
+  // usuário pode forçar contar ou ignorar todas de um destinatário
+  const o = applyCategories(raw, { ignored: { a: false }, ignoredMerchants: { maria: true } });
+  assert.equal(o.find((x) => x.id === 'a').kind, 'expense');
+  assert.equal(o.find((x) => x.id === 'f').kind, 'ignore');
+});
+
+test('escopos e ritmo do mês', () => {
+  const txs = applyCategories(demoTransactions('2026-11-02'));
+  const card = A.filterScope(txs, 'cartao');
+  const conta = A.filterScope(txs, 'conta');
+  assert.ok(card.every((t) => t.source === 'cartao'));
+  assert.ok(conta.every((t) => t.source !== 'cartao' && t.kind !== 'income'));
+  const total = A.summarize(txs, '2026-10').total;
+  assert.ok(Math.abs(A.summarize(card, '2026-10').total + A.summarize(conta, '2026-10').total - total) < 0.01);
+  const avg = A.cumulativeAverage(card, '2026-10', 6);
+  assert.equal(avg.months.length, 5);
+  assert.equal(avg.values.length, 31);
+  const pace = A.paceComparison(card, '2026-10', '2026-10-15');
+  assert.equal(pace.day, 15);
+  assert.ok(pace.partial);
+  assert.ok(pace.average > 0 && pace.current > 0);
+  const ins = A.insights(card, '2026-10', { today: '2026-10-15' });
+  assert.ok(ins.some((i) => /Até o dia 15/.test(i.title)));
+  assert.ok(!ins.some((i) => /no cartão de crédito/.test(i.title)));
+});

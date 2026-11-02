@@ -58,15 +58,59 @@ export function guessCategory(tx) {
   return 'Outros';
 }
 
-// overrides: { byId: {id: cat}, byMerchant: {merchantKey: cat}, ignored: {id: true} }
+// Motivos automáticos para não contar uma transação como gasto
+const BILL_RE = /fatura|pagamento de cart[aã]o|pagamento cart[aã]o/i;
+const NUBANK_RE = /^(nu ?pagamentos|nubank|nu financeira|nu invest)/i;
+const SAVINGS_RE = /\brdb\b|dinheiro guardado|dinheiro resgatado|caixinha|aplica[cç][aã]o|resgate|porquinho/i;
+
+export function autoIgnoreReason(t) {
+  if (t.source === 'cartao') {
+    if (t.amount < 0 && /^pagamento|pagamento recebido/i.test(t.description)) return 'Pagamento da fatura';
+    return null;
+  }
+  if (t.amount > 0 && (BILL_RE.test(t.description) || NUBANK_RE.test(t.merchant || ''))) return 'Pagamento da fatura';
+  if (SAVINGS_RE.test(t.description)) return 'Caixinha / investimento';
+  return null;
+}
+
+// Pix/boleto/débito com o mesmo valor de um "Pagamento recebido" da fatura (até 5 dias de diferença)
+function billPaymentIds(txs) {
+  const payments = txs.filter((t) => t.source === 'cartao' && t.amount < 0 && /pagamento/i.test(t.description));
+  const ids = new Set();
+  const day = (d) => Date.parse(`${d}T00:00:00Z`) / 864e5;
+  for (const p of payments) {
+    const match = txs.find((t) => t.source !== 'cartao' && !ids.has(t.id) && Math.abs(t.amount + p.amount) < 0.01 &&
+      Math.abs(day(t.date) - day(p.date)) <= 5);
+    if (match) ids.add(match.id);
+  }
+  return ids;
+}
+
+// overrides: {
+//   byId: {id: cat}, byMerchant: {merchantKey: cat},
+//   ignored: {id: true|false}  (false = forçar contar como gasto),
+//   ignoredMerchants: {merchantKey: true}
+// }
 export function applyCategories(txs, overrides = {}) {
   const byId = overrides.byId || {};
   const byMerchant = overrides.byMerchant || {};
   const ignored = overrides.ignored || {};
+  const ignoredMerchants = overrides.ignoredMerchants || {};
+  const bills = billPaymentIds(txs);
   return txs.map((t) => {
     const key = merchantKey(t.merchant);
     const category = byId[t.id] || byMerchant[key] || guessCategory(t);
-    const kind = ignored[t.id] ? 'ignore' : t.kind;
-    return { ...t, category, kind, merchantKey: key };
+    let kind = t.kind === 'income' ? 'income' : 'expense';
+    let ignoreReason = null;
+    if (kind !== 'income') {
+      ignoreReason = autoIgnoreReason(t) || (bills.has(t.id) ? 'Pagamento da fatura' : null);
+      if (!ignoreReason && t.kind === 'ignore') ignoreReason = 'Ignorada';
+    }
+    if (ignoredMerchants[key]) ignoreReason = 'Ignorada por você';
+    if (ignored[t.id] === true) ignoreReason = 'Ignorada por você';
+    if (ignored[t.id] === false) ignoreReason = null;
+    if (ignoreReason) kind = 'ignore';
+    else if (kind === 'ignore') kind = 'expense';
+    return { ...t, category, kind, ignoreReason, merchantKey: key };
   });
 }

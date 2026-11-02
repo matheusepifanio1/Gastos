@@ -12,12 +12,14 @@ O caminho seguro é usar a exportação oficial do próprio app (CSV/OFX), que j
 
 ## O que o app mostra
 
+**Três visões, escolhidas no topo:** *Tudo*, *💳 Cartão* e *💸 Pix e conta* (Pix, débito e boletos). Cada visão tem seus próprios gráficos, insights, comparações e meta mensal. Dá para acompanhar o cartão sem misturar com os Pix, e vice-versa.
+
 **Resumo do mês**
 - Total gasto, variação em relação ao mês anterior e quanto saiu por cartão, Pix, débito e boleto
 - Meta mensal com barra de progresso
 - Evolução dos últimos 12 meses por forma de pagamento (toque numa barra para abrir o mês)
 - Gastos por categoria, com comparação ao mês anterior (toque para ver as transações)
-- **Ritmo do mês:** gasto acumulado dia a dia comparado ao mês anterior
+- **Ritmo do mês:** gasto acumulado dia a dia comparado ao mês anterior e à média dos últimos 6 meses, com o resumo "até o dia X você gastou A; na média, até esse dia eram B"
 - **Quando você gasta:** gasto por dia do mês e média por dia da semana (fins de semana destacados)
 - Ranking de onde você mais gastou
 
@@ -47,7 +49,8 @@ O caminho seguro é usar a exportação oficial do próprio app (CSV/OFX), que j
 > O caminho exato dos menus pode mudar entre versões do app do Nubank. Pelo app web (app.nubank.com.br) também é possível exportar.
 
 Para não contar nada em dobro:
-- "Pagamento de fatura" no extrato é ignorado, porque as compras já entram pela fatura do cartão.
+- O pagamento da fatura no extrato é ignorado, porque as compras já entram pela fatura do cartão. O app reconhece descrições com "fatura", pagamentos para Nu Pagamentos/Nubank e qualquer Pix, boleto ou débito com o mesmo valor de um "Pagamento recebido" da fatura (até 5 dias de diferença).
+- Na aba Transações você pode ignorar uma transação, ou todas de um destinatário (ex: Pix para você mesmo em outro banco), e também forçar uma ignorada a contar.
 - Dinheiro guardado em caixinhas (RDB) e resgates são ignorados.
 - "Pagamento recebido" na fatura é ignorado. Estornos abatem o gasto.
 

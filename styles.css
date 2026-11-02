@@ -40,7 +40,7 @@ body {
 
 .topbar {
   position: sticky; top: 0; z-index: 5;
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px;
   padding: calc(12px + env(safe-area-inset-top)) 16px 12px;
   background: var(--brand); color: #fff;
 }
@@ -169,3 +169,11 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
   background: #222; color: #fff; padding: 10px 16px; border-radius: 12px; font-size: 14px; z-index: 20;
   max-width: 90vw; box-shadow: 0 4px 16px rgba(0,0,0,.25);
 }
+
+.scope { flex-basis: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; background: rgba(0,0,0,.18); border-radius: 12px; padding: 4px; }
+.scope[hidden] { display: none; }
+.scope button { border: 0; background: transparent; color: #fff; font: inherit; font-size: 13px; font-weight: 600; padding: 8px 4px; border-radius: 9px; cursor: pointer; }
+.scope button.active { background: #fff; color: #820ad1; }
+.pace { font-size: 14px; line-height: 1.45; margin: -4px 0 10px; }
+.pace b.up { color: var(--bad); }
+.pace b.down { color: var(--good); }
