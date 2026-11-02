@@ -1,0 +1,17 @@
+{
+  "name": "Meus Gastos — análise Nubank",
+  "short_name": "Meus Gastos",
+  "description": "Análise de gastos do cartão e Pix do Nubank, 100% no seu celular.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#820ad1",
+  "theme_color": "#820ad1",
+  "lang": "pt-BR",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}

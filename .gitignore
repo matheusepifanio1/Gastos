@@ -1,0 +1,6 @@
+node_modules/
+*.csv
+*.ofx
+!tests/fixtures/*.csv
+!tests/fixtures/*.ofx
+gastos-backup-*.json

@@ -1,0 +1,6 @@
+Data,Valor,Identificador,Descrição
+01/10/2026,5000.00,abc1,Transferência recebida pelo Pix - EMPRESA X - 12.345.678/0001-90 - ITAÚ
+02/10/2026,-150.00,abc2,"Transferência enviada pelo Pix - MARIA SILVA - •••.111.222-•• - NU PAGAMENTOS - IP (0260) Agência: 1 Conta: 3-3"
+03/10/2026,-1200.00,abc3,Pagamento de fatura
+04/10/2026,-35.50,abc4,Compra no débito - Drogasil
+05/10/2026,-500.00,abc5,Aplicação RDB
